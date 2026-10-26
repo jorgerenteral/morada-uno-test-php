@@ -65,7 +65,7 @@ class ApiExceptionRenderer
 
         return $this->error('validation_error', $e->getMessage(), 400, [
             'field' => $field,
-            'code' => $rule ? Str::snake($rule) : 'invalid',
+            'code' => $rule ? Str::snake(class_basename($rule)) : 'invalid',
             'errors' => $e->errors(),
         ]);
     }

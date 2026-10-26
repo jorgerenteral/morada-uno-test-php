@@ -13,7 +13,8 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: '',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // The API has no login page: unauthenticated requests get a 401, never a redirect.
+        $middleware->redirectGuestsTo(fn () => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(fn () => true);
