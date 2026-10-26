@@ -6,6 +6,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
 #[Fillable(['username', 'author_pseudonym', 'password'])]
@@ -27,6 +28,14 @@ class User extends Authenticatable
         return [
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * @return HasMany<Book, $this>
+     */
+    public function books(): HasMany
+    {
+        return $this->hasMany(Book::class, 'author_id');
     }
 
     public function isDarthVader(): bool
