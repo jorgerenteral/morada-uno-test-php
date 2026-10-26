@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Auth\JwtGuard;
+use App\Services\JwtService;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -11,7 +14,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(JwtService::class, fn () => new JwtService(
+            secret: (string) config('jwt.secret'),
+            algorithm: config('jwt.algorithm'),
+            ttl: config('jwt.ttl'),
+            issuer: config('jwt.issuer'),
+        ));
     }
 
     /**
@@ -19,6 +27,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Auth::viaRequest('jwt', fn ($request) => app(JwtGuard::class)($request));
     }
 }
