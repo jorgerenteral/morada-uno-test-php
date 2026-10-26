@@ -9,11 +9,20 @@ class UpdateBookRequest extends FormRequest
 {
     /**
      * Ownership is checked before validating so that strangers get a 403
-     * instead of learning about the shape of someone else's book.
+     * instead of learning about the shape of someone else's book. Publishing
+     * has its own rule, so it is checked right after ownership.
      */
     public function authorize(): bool
     {
-        return Gate::allows('update', $this->route('book'));
+        $book = $this->route('book');
+
+        Gate::authorize('update', $book);
+
+        if ($this->boolean('published')) {
+            Gate::authorize('publish', $book);
+        }
+
+        return true;
     }
 
     /**
