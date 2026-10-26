@@ -13,4 +13,7 @@ Route::get('/books/{id}', [BookController::class, 'show'])->whereNumber('id');
 Route::middleware('auth')->prefix('me')->group(function () {
     Route::get('/books', [MeBookController::class, 'index']);
     Route::post('/books', [MeBookController::class, 'store']);
+    Route::get('/books/{book}', [MeBookController::class, 'show'])->whereNumber('book');
+    Route::patch('/books/{book}', [MeBookController::class, 'update'])->whereNumber('book');
+    Route::delete('/books/{book}', [MeBookController::class, 'destroy'])->whereNumber('book');
 });

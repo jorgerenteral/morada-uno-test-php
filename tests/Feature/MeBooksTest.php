@@ -160,4 +160,155 @@ class MeBooksTest extends TestCase
 
         $this->assertDatabaseCount('books', 0);
     }
+
+    public function test_show_returns_own_book_including_drafts(): void
+    {
+        $draft = Book::factory()->for($this->author, 'author')->create();
+
+        $this->getJson("/me/books/{$draft->id}", $this->authHeaders())
+            ->assertOk()
+            ->assertJsonPath('id', $draft->id)
+            ->assertJsonPath('published', false);
+    }
+
+    public function test_show_of_someone_elses_book_returns_403(): void
+    {
+        $other = Book::factory()->published()->create();
+
+        $this->getJson("/me/books/{$other->id}", $this->authHeaders())
+            ->assertForbidden()
+            ->assertJsonPath('error', 'forbidden');
+    }
+
+    public function test_patch_updates_fields_and_can_publish(): void
+    {
+        $book = Book::factory()->for($this->author, 'author')->create(['title' => 'Old', 'price' => 5]);
+
+        $this->patchJson("/me/books/{$book->id}", ['title' => 'New', 'price' => '12.50', 'published' => true], $this->authHeaders())
+            ->assertOk()
+            ->assertJsonPath('id', $book->id)
+            ->assertJsonPath('title', 'New')
+            ->assertJsonPath('price', '12.50')
+            ->assertJsonPath('published', true);
+
+        $this->getJson("/books/{$book->id}")->assertOk();
+    }
+
+    public function test_patch_can_unpublish_and_clear_the_cover(): void
+    {
+        $book = Book::factory()->for($this->author, 'author')->published()->create(['cover_image_url' => 'https://example.com/c.jpg']);
+
+        $this->patchJson("/me/books/{$book->id}", ['published' => false, 'cover_image_url' => null], $this->authHeaders())
+            ->assertOk()
+            ->assertJsonPath('published', false)
+            ->assertJsonPath('cover_image_url', null);
+
+        $this->getJson("/books/{$book->id}")->assertNotFound();
+    }
+
+    public function test_patch_ignores_attempts_to_change_the_author(): void
+    {
+        $book = Book::factory()->for($this->author, 'author')->create();
+        $other = User::factory()->create();
+
+        $this->patchJson("/me/books/{$book->id}", ['author_id' => $other->id, 'title' => 'Same owner'], $this->authHeaders())
+            ->assertOk();
+
+        $this->assertSame($this->author->id, $book->fresh()->author_id);
+    }
+
+    public function test_patch_with_invalid_data_returns_400(): void
+    {
+        $book = Book::factory()->for($this->author, 'author')->create();
+        $headers = $this->authHeaders();
+
+        $this->patchJson("/me/books/{$book->id}", ['title' => ''], $headers)
+            ->assertStatus(400)
+            ->assertJsonPath('error', 'validation_error')
+            ->assertJsonPath('details.field', 'title');
+
+        $this->patchJson("/me/books/{$book->id}", ['published' => 'maybe'], $headers)
+            ->assertStatus(400)
+            ->assertJsonPath('details.field', 'published');
+    }
+
+    public function test_patch_requires_authentication(): void
+    {
+        $book = Book::factory()->for($this->author, 'author')->create();
+
+        $this->patchJson("/me/books/{$book->id}", ['title' => 'x'])->assertUnauthorized();
+    }
+
+    public function test_patch_on_someone_elses_book_returns_403_and_changes_nothing(): void
+    {
+        $other = Book::factory()->create(['title' => 'Original']);
+
+        $this->patchJson("/me/books/{$other->id}", ['title' => 'Hijacked'], $this->authHeaders())
+            ->assertForbidden()
+            ->assertJsonPath('error', 'forbidden');
+
+        $this->assertSame('Original', $other->fresh()->title);
+    }
+
+    public function test_forbidden_takes_precedence_over_validation_for_strangers(): void
+    {
+        $other = Book::factory()->create();
+
+        $this->patchJson("/me/books/{$other->id}", ['title' => ''], $this->authHeaders())->assertForbidden();
+    }
+
+    public function test_patch_on_unknown_or_deleted_book_returns_404(): void
+    {
+        $deleted = Book::factory()->for($this->author, 'author')->trashed()->create();
+        $headers = $this->authHeaders();
+
+        $this->patchJson('/me/books/999', ['title' => 'x'], $headers)
+            ->assertNotFound()
+            ->assertJsonPath('error', 'not_found');
+        $this->patchJson("/me/books/{$deleted->id}", ['title' => 'x'], $headers)->assertNotFound();
+    }
+
+    public function test_delete_soft_deletes_the_book_and_hides_it_everywhere(): void
+    {
+        $book = Book::factory()->for($this->author, 'author')->published()->create();
+        $headers = $this->authHeaders();
+
+        $this->deleteJson("/me/books/{$book->id}", [], $headers)
+            ->assertNoContent();
+
+        $this->assertDatabaseHas('books', ['id' => $book->id]);
+        $this->assertNotNull(Book::withTrashed()->find($book->id)->deleted_at);
+
+        $this->getJson("/books/{$book->id}")->assertNotFound();
+        $this->getJson('/books')->assertJsonCount(0);
+        $this->getJson('/me/books', $headers)->assertJsonCount(0);
+        $this->getJson("/me/books/{$book->id}", $headers)->assertNotFound();
+    }
+
+    public function test_delete_on_someone_elses_book_returns_403_and_keeps_it(): void
+    {
+        $other = Book::factory()->published()->create();
+
+        $this->deleteJson("/me/books/{$other->id}", [], $this->authHeaders())
+            ->assertForbidden()
+            ->assertJsonPath('error', 'forbidden');
+
+        $this->assertNull($other->fresh()->deleted_at);
+    }
+
+    public function test_delete_requires_authentication(): void
+    {
+        $book = Book::factory()->for($this->author, 'author')->create();
+
+        $this->deleteJson("/me/books/{$book->id}")->assertUnauthorized();
+    }
+
+    public function test_delete_unknown_or_already_deleted_book_returns_404(): void
+    {
+        $deleted = Book::factory()->for($this->author, 'author')->trashed()->create();
+        $headers = $this->authHeaders();
+
+        $this->deleteJson('/me/books/999', [], $headers)->assertNotFound();
+        $this->deleteJson("/me/books/{$deleted->id}", [], $headers)->assertNotFound();
+    }
 }
